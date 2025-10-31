@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Call Center Transcription - Whisper Large-V3</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 8px 20px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 20px;
+            font-size: 0.9rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .status-badge.connected {
+            background: rgba(76, 175, 80, 0.3);
+            border: 2px solid #4CAF50;
+        }
+
+        .status-badge.disconnected {
+            background: rgba(244, 67, 54, 0.3);
+            border: 2px solid #f44336;
+        }
+
+        .controls {
+            padding: 30px;
+            background: #f5f7fa;
+            border-bottom: 2px solid #e1e8ed;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+
+        .form-group {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group select,
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e1e8ed;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+
+        .form-group select:focus,
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #f44336 0%, #e91e63 100%);
+            color: white;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #4CAF50 0%, #8BC34A 100%);
+            color: white;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            padding: 30px;
+        }
+
+        .speaker-section {
+            background: #f9fafb;
+            border-radius: 15px;
+            padding: 25px;
+            border: 2px solid #e1e8ed;
+        }
+
+        .speaker-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e1e8ed;
+        }
+
+        .speaker-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .recording-indicator {
+            width: 12px;
+            height: 12px;
+            background: #e1e8ed;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .recording-indicator.active {
+            background: #f44336;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .transcription-box {
+            min-height: 400px;
+            max-height: 500px;
+            overflow-y: auto;
+            background: white;
+            border: 2px solid #e1e8ed;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .transcription-entry {
+            margin-bottom: 15px;
+            padding: 15px;
+            background: #f5f7fa;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .entry-timestamp {
+            font-size: 0.75rem;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .entry-text {
+            font-size: 1.1rem;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .entry-text.hindi,
+        .entry-text.marathi {
+            font-size: 1.3rem;
+        }
+
+        .info-panel {
+            background: #f0f4f8;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .info-panel h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            border: 2px solid #e1e8ed;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 2px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 2px solid #f5c6cb;
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                🎤 Live Call Center Transcription
+            </h1>
+            <p>Whisper Large-V3 • GPU Accelerated • Real-time</p>
+            <div style="margin-top: 15px;">
+                <span class="status-badge disconnected" id="statusBadge">
+                    ⚫ Disconnected
+                </span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div id="alertBox" class="alert"></div>
+            
+            <div class="control-row">
+                <div class="form-group">
+                    <label for="languageSelect">Language</label>
+                    <select id="languageSelect">
+                        <option value="english">English</option>
+                        <option value="hindi">हिंदी (Hindi)</option>
+                        <option value="marathi">मराठी (Marathi)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="sessionInput">Session ID (Optional)</label>
+                    <input type="text" id="sessionInput" placeholder="Auto-generated if empty">
+                </div>
+                
+                <div class="form-group" style="display: flex; align-items: flex-end;">
+                    <button class="btn btn-primary" id="startBtn" onclick="startSession()">
+                        🚀 Start Session
+                    </button>
+                </div>
+            </div>
+
+            <div class="control-row" id="recordingControls" style="display: none;">
+                <button class="btn btn-success" id="citizenBtn" onclick="toggleRecording('citizen')">
+                    🎤 Record Citizen
+                </button>
+                <button class="btn btn-success" id="agentBtn" onclick="toggleRecording('agent')">
+                    🎤 Record Agent
+                </button>
+                <button class="btn btn-danger" onclick="endSession()">
+                    ⏹️ End Session
+                </button>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="speaker-section">
+                <div class="speaker-header">
+                    <div class="speaker-title">
+                        👤 Citizen
+                        <span class="recording-indicator" id="citizenIndicator"></span>
+                    </div>
+                </div>
+                <div class="transcription-box" id="citizenBox">
+                    <div class="empty-state">
+                        <svg fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clip-rule="evenodd"/>
+                        </svg>
+                        <p>Click "Record Citizen" to start</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="speaker-section">
+                <div class="speaker-header">
+                    <div class="speaker-title">
+                        👨‍💼 Call Center Agent
+                        <span class="recording-indicator" id="agentIndicator"></span>
+                    </div>
+                </div>
+                <div class="transcription-box" id="agentBox">
+                    <div class="empty-state">
+                        <svg fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clip-rule="evenodd"/>
+                        </svg>
+                        <p>Click "Record Agent" to start</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="info-panel">
+                <h3>📊 Session Statistics</h3>
+                <div class="stats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="citizenCount">0</div>
+                        <div class="stat-label">Citizen Messages</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="agentCount">0</div>
+                        <div class="stat-label">Agent Messages</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalTime">0s</div>
+                        <div class="stat-label">Session Duration</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let sessionId = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let currentSpeaker = null;
+        let sessionStartTime = null;
+        let citizenCount = 0;
+        let agentCount = 0;
+
+        function showAlert(message, type = 'success') {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.className = `alert alert-${type} show`;
+            alertBox.textContent = message;
+            setTimeout(() => {
+                alertBox.classList.remove('show');
+            }, 5000);
+        }
+
+        function updateStatus(connected) {
+            const badge = document.getElementById('statusBadge');
+            if (connected) {
+                badge.className = 'status-badge connected';
+                badge.innerHTML = '🟢 Connected';
+            } else {
+                badge.className = 'status-badge disconnected';
+                badge.innerHTML = '⚫ Disconnected';
+            }
+        }
+
+        async function startSession() {
+            const language = document.getElementById('languageSelect').value;
+            const customSessionId = document.getElementById('sessionInput').value.trim();
+            
+            sessionId = customSessionId || `session_${Date.now()}`;
+            
+            try {
+                // Create session on server
+                const response = await fetch('http://localhost:8000/api/create-session', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({session_id: sessionId, language: language})
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Connect WebSocket
+                    ws = new WebSocket(`ws://localhost:8000/ws/${sessionId}`);
+                    
+                    ws.onopen = () => {
+                        updateStatus(true);
+                        showAlert('Session started successfully!', 'success');
+                        document.getElementById('startBtn').disabled = true;
+                        document.getElementById('recordingControls').style.display = 'flex';
+                        sessionStartTime = Date.now();
+                        updateSessionTimer();
+                    };
+                    
+                    ws.onmessage = (event) => {
+                        const message = JSON.parse(event.data);
+                        
+                        if (message.type === 'transcription') {
+                            displayTranscription(message.data);
+                        } else if (message.type === 'error') {
+                            showAlert(message.message, 'error');
+                        }
+                    };
+                    
+                    ws.onerror = (error) => {
+                        showAlert('WebSocket error occurred', 'error');
+                        updateStatus(false);
+                    };
+                    
+                    ws.onclose = () => {
+                        updateStatus(false);
+                        showAlert('Session ended', 'success');
+                    };
+                } else {
+                    showAlert('Failed to create session', 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        async function toggleRecording(speaker) {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                // Stop recording
+                mediaRecorder.stop();
+                currentSpeaker = null;
+                updateRecordingIndicator(speaker, false);
+                return;
+            }
+            
+            // Start recording
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        sampleRate: 16000
+                    } 
+                });
+                
+                mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'audio/webm'
+                });
+                
+                audioChunks = [];
+                currentSpeaker = speaker;
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+                
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    await sendAudioToServer(audioBlob, speaker);
+                    stream.getTracks().forEach(track => track.stop());
+                };
+                
+                mediaRecorder.start();
+                updateRecordingIndicator(speaker, true);
+                
+            } catch (error) {
+                showAlert('Microphone access denied: ' + error.message, 'error');
+            }
+        }
+
+        function updateRecordingIndicator(speaker, active) {
+            const indicator = document.getElementById(`${speaker}Indicator`);
+            const btn = document.getElementById(`${speaker}Btn`);
+            
+            if (active) {
+                indicator.classList.add('active');
+                btn.innerHTML = `⏹️ Stop ${speaker === 'citizen' ? 'Citizen' : 'Agent'}`;
+                btn.classList.remove('btn-success');
+                btn.classList.add('btn-danger');
+            } else {
+                indicator.classList.remove('active');
+                btn.innerHTML = `🎤 Record ${speaker === 'citizen' ? 'Citizen' : 'Agent'}`;
+                btn.classList.remove('btn-danger');
+                btn.classList.add('btn-success');
+            }
+        }
+
+        async function sendAudioToServer(audioBlob, speaker) {
+            const arrayBuffer = await audioBlob.arrayBuffer();
+            const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+            
+            const speakerName = speaker === 'citizen' ? 'Citizen' : 'Agent';
+            
+            ws.send(JSON.stringify({
+                type: 'audio',
+                audio: base64Audio,
+                speaker: speakerName
+            }));
+        }
+
+        function displayTranscription(data) {
+            const boxId = data.speaker === 'Citizen' ? 'citizenBox' : 'agentBox';
+            const box = document.getElementById(boxId);
+            
+            // Remove empty state if present
+            const emptyState = box.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.remove();
+            }
+            
+            // Create entry
+            const entry = document.createElement('div');
+            entry.className = 'transcription-entry';
+            
+            const timestamp = new Date(data.timestamp).toLocaleTimeString();
+            const language = data.language.toLowerCase();
+            
+            entry.innerHTML = `
+                <div class="entry-timestamp">${timestamp} • ${data.language}</div>
+                <div class="entry-text ${language}">${data.text}</div>
+            `;
+            
+            box.insertBefore(entry, box.firstChild);
+            
+            // Update stats
+            if (data.speaker === 'Citizen') {
+                citizenCount++;
+                document.getElementById('citizenCount').textContent = citizenCount;
+            } else {
+                agentCount++;
+                document.getElementById('agentCount').textContent = agentCount;
+            }
+        }
+
+        function updateSessionTimer() {
+            if (!sessionStartTime) return;
+            
+            setInterval(() => {
+                const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+                document.getElementById('totalTime').textContent = `${elapsed}s`;
+            }, 1000);
+        }
+
+        function endSession() {
+            if (ws) {
+                ws.close();
+            }
+            
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+            
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('recordingControls').style.display = 'none';
+            updateStatus(false);
+            
+            sessionId = null;
+            sessionStartTime = null;
+            citizenCount = 0;
+            agentCount = 0;
+            
+            document.getElementById('citizenCount').textContent = '0';
+            document.getElementById('agentCount').textContent = '0';
+            document.getElementById('totalTime').textContent = '0s';
+        }
+    </script>
+</body>
+</html>
