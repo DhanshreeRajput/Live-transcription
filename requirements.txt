@@ -3,6 +3,10 @@ uvicorn==0.27.0
 websockets==12.0
 python-multipart==0.0.6
 faster-whisper==0.10.0
-torch==2.1.2
+# torch is intentionally omitted here so you can install a CUDA-enabled
+# PyTorch wheel that matches your Python and CUDA version. See README or
+# the setup instructions in the project to install the GPU-enabled torch.
+# Example (PowerShell):
+#   pip install torch==2.2.0+cu121 --index-url https://download.pytorch.org/whl/cu121
 numpy==1.26.3
 pydub==0.25.1

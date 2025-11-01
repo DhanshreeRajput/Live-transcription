@@ -13,6 +13,24 @@ from datetime import datetime
 from typing import Dict, List
 import warnings
 import re
+import subprocess
+
+# Check ffmpeg availability at startup
+def check_ffmpeg() -> bool:
+    try:
+        subprocess.run(["ffmpeg", "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        return True
+    except FileNotFoundError:
+        return False
+    except subprocess.CalledProcessError:
+        # ffmpeg exists but returned non-zero; still consider available
+        return True
+
+FFMPEG_AVAILABLE = check_ffmpeg()
+if not FFMPEG_AVAILABLE:
+    print("⚠️ ffmpeg not found on PATH. Server will attempt to transcode but may fail. Install ffmpeg via conda-forge or add ffmpeg.exe to PATH.")
+else:
+    print("✅ ffmpeg found: will use it to transcode incoming audio containers to 16kHz WAV")
 
 warnings.filterwarnings("ignore")
 
@@ -118,14 +136,46 @@ class TranscriptionManager:
         language = session["language"]
         
         try:
-            # Save audio to temporary WAV format
-            audio_io = io.BytesIO()
-            with wave.open(audio_io, 'wb') as wav_file:
-                wav_file.setnchannels(1)
-                wav_file.setsampwidth(2)
-                wav_file.setframerate(16000)
-                wav_file.writeframes(audio_data)
-            
+            # The client currently sends chunks as WebM/Opus (audio/webm).
+            # Detect container and, if needed, convert to 16kHz mono PCM WAV via ffmpeg
+            def is_wav(data: bytes) -> bool:
+                return data[:4] == b'RIFF' or data[:4] == b'RIFX'
+
+            if is_wav(audio_data):
+                # Already a WAV file/bytes
+                audio_io = io.BytesIO(audio_data)
+            else:
+                # Use ffmpeg to convert incoming bytes to WAV PCM 16kHz mono
+                if not FFMPEG_AVAILABLE:
+                    print("❌ Received non-WAV audio but ffmpeg is not available to convert it.")
+                    await self.broadcast(session_id, {"type": "error", "message": "Server missing ffmpeg: cannot convert incoming audio. Install ffmpeg and restart."})
+                    return None
+
+                try:
+                    ffmpeg_cmd = [
+                        "ffmpeg",
+                        "-hide_banner",
+                        "-loglevel", "error",
+                        "-i", "pipe:0",
+                        "-f", "wav",
+                        "-ar", "16000",
+                        "-ac", "1",
+                        "-acodec", "pcm_s16le",
+                        "pipe:1"
+                    ]
+
+                    proc = subprocess.run(ffmpeg_cmd, input=audio_data, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+                    audio_io = io.BytesIO(proc.stdout)
+                except FileNotFoundError:
+                    print("❌ ffmpeg executable not found during conversion.")
+                    await self.broadcast(session_id, {"type": "error", "message": "Server missing ffmpeg: cannot convert incoming audio."})
+                    return None
+                except subprocess.CalledProcessError as e:
+                    err = e.stderr.decode('utf-8', errors='ignore')
+                    print(f"❌ ffmpeg conversion failed: {err}")
+                    await self.broadcast(session_id, {"type": "error", "message": f"Server failed to process audio (ffmpeg error): {err[:200]}"})
+                    return None
+
             audio_io.seek(0)
             
             # Language mapping
@@ -289,6 +339,7 @@ async def health_check():
         "status": "healthy",
         "model": "large-v3",
         "device": device,
+        "ffmpeg": FFMPEG_AVAILABLE,
         "active_sessions": len(transcription_manager.sessions)
     })
 

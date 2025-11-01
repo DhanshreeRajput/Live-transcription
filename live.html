@@ -541,21 +541,26 @@
                 mediaRecorder = new MediaRecorder(stream, {
                     mimeType: 'audio/webm'
                 });
-                
-                audioChunks = [];
+
                 currentSpeaker = speaker;
-                
+
+                // Send each dataavailable chunk immediately (reduce latency)
                 mediaRecorder.ondataavailable = (event) => {
-                    audioChunks.push(event.data);
+                    if (event.data && event.data.size > 0) {
+                        // fire-and-forget the async send
+                        sendAudioToServer(event.data, speaker).catch(err => {
+                            showAlert('Failed to send audio chunk: ' + err.message, 'error');
+                        });
+                    }
                 };
-                
-                mediaRecorder.onstop = async () => {
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                    await sendAudioToServer(audioBlob, speaker);
+
+                // When stopping, just stop tracks (last chunk will be sent via ondataavailable)
+                mediaRecorder.onstop = () => {
                     stream.getTracks().forEach(track => track.stop());
                 };
-                
-                mediaRecorder.start();
+
+                // Use 1s timeslice to get regular chunks for streaming
+                mediaRecorder.start(1000);
                 updateRecordingIndicator(speaker, true);
                 
             } catch (error) {

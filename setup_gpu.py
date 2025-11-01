@@ -24,19 +24,40 @@ def check_gpu():
 
 def install_pytorch_gpu():
     """Install PyTorch with CUDA support"""
-    print("\n📦 Installing PyTorch with CUDA 11.8...")
-    try:
-        cmd = [
-            sys.executable, "-m", "pip", "install",
-            "torch==2.1.2", "torchvision", "torchaudio",
-            "--index-url", "https://download.pytorch.org/whl/cu118"
-        ]
-        subprocess.check_call(cmd)
-        print("✅ PyTorch with GPU support installed!")
-        return True
-    except Exception as e:
-        print(f"❌ Failed to install PyTorch: {e}")
-        return False
+    print("\n📦 Installing PyTorch with a compatible CUDA build (attempting cu121 → cu118 → cpu)...")
+
+    # We try a small set of known-good variants in order. For Python 3.12 Windows
+    # machines newer PyTorch builds (2.2+) with cu121 are a good start. If that
+    # fails, we try cu118, then fall back to a CPU-only wheel. Installing the
+    # correct wheel requires choosing the matching index-url.
+    variants = [
+        ("2.2.0+cu121", "https://download.pytorch.org/whl/cu121"),
+        ("2.2.0+cu118", "https://download.pytorch.org/whl/cu118"),
+        ("2.2.0+cpu",   "https://download.pytorch.org/whl/cpu"),
+    ]
+
+    for torch_tag, index_url in variants:
+        try:
+            print(f"→ Trying torch=={torch_tag} from {index_url} ...")
+            cmd = [
+                sys.executable, "-m", "pip", "install",
+                f"torch=={torch_tag}",
+                "--index-url", index_url,
+            ]
+            subprocess.check_call(cmd)
+            print(f"✅ Installed torch=={torch_tag}")
+            # Optionally install torchvision/torchaudio if needed (commented out
+            # because matching tags can be platform specific). Uncomment to enable.
+            # subprocess.check_call([sys.executable, "-m", "pip", "install",
+            #                        f"torchvision==0.15.2+{cuda_tag}", "--index-url", index_url])
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"⚠️ Install attempt for {torch_tag} failed: {e}")
+        except Exception as e:
+            print(f"⚠️ Unexpected error installing {torch_tag}: {e}")
+
+    print("❌ All torch install attempts failed. You can try installing manually using the commands suggested in the README or setup output.")
+    return False
 
 def install_requirements():
     """Install all requirements"""
